@@ -1,0 +1,185 @@
+// CREATE CLOUD-FREE ICE MASK
+
+// Use this script to create the cloud free ice mask that is used in the lake mapping script
+// Requires a shapefile to define the area over which to create the ice mask (same as used for mapping script)
+// Specific pathways/filenames will need changing by the user
+
+// Pete Tuckett 2024
+// pete.tuckett@york.ac.uk, petetuckett47@gmail.com
+
+// See this paper for details of the mapping methodology:
+// Tuckett, P. A., Ely, J. C., Sole, A. J., Lea, J. M., Livingstone, S. J., Jones, J. M., & van Wessem, J. M. (2021). 
+// Automated mapping of the seasonal evolution of surface meltwater and its links to climate on the Amery Ice Shelf, Antarctica. The Cryosphere. 1-35.
+
+
+// #################################### CREATE ICE MASK AND ADD TO WINDOW COLLECTION ####################################
+
+var assetPath='users/patuckett1/Regions/AIS_Q4_108km';
+//var assetPath='users/petetuckett/Antarctic_lakes/Flask_2_tiles';
+//var assetPath='users/Jmleaglacio/AIS_Q4_new';
+
+var catchments=ee.FeatureCollection(assetPath);
+print(catchments)
+
+Map.centerObject(catchments, 6);
+Map.addLayer(catchments,[],'RoIs');
+
+// var featGeometries=catchments.geometry().geometries();
+// var catchmentsList=catchments.toList(99999)
+
+// var catchmentGeom=[]
+// var listLength=featGeometries.length().subtract(1)
+
+// // Maps geometry for each catchment as a property
+// var catchmentGeom = ee.List.sequence(0, listLength).map(function(i){
+//   // get the geometry corresponding to the number
+//   var geom = ee.Geometry(featGeometries.get(ee.Number(i))) ;
+//   var feat = catchmentsList.map(function(feat1){
+//       return ee.Feature(feat1).set('GEOMETRY', geom);
+//     });
+//   return feat.get(i);
+// });
+
+// // Create a new feature collection containing the geometry properties
+// var catchments_collection=ee.FeatureCollection(catchmentGeom);
+// print(catchments_collection,'Catchments')
+
+//################################################################################
+
+// Specifiy the Data products to by used:
+var L8 = 'LANDSAT/LC08/C02/T2_TOA';
+
+var icemaskstart = '2017-01-01'; // Keep fixed to 2018 even when not mapping that year
+var icemaskend = '2018-12-31';
+var sunElev = 20; // Minimum sun elevation angle (Moussavi, 2020)
+var L8bandsUsed = ['B2','B3','B4','B6','B10'];
+var L7bandsUsed = ['B1','B2','B3','B5','B6_VCID_1'];
+
+// Create Colour palettes for MapDisplay
+var RedColour = {palette: ['FF0000'], max: 1};
+var BlueColour = {palette: ['0000FF'], max: 1};
+var GreenColour = {palette: ['00FF00'], max: 1};
+
+//############################################ INITIAL LOOP TO CHECK NUMBER OF IMAGES #############################################
+
+// Open massive loop that loops through different catchments ('returns' at very end of script)
+var NumImages_Collection=catchments.map(function(feat){
+  
+var filteredRoiGeometry1=ee.Feature(feat).geometry(); 
+
+// Create a mask for the ROI in order to be able to use .updateMask(ROIRask) to clip images to ROI
+var ROImask1 = ee.Image.constant(1).clip(filteredRoiGeometry1)
+
+// Collection for IceMask
+var Collection_for_ice_mask1 = ee.ImageCollection(L8)
+		.filterBounds(filteredRoiGeometry1)
+		.filterDate(icemaskstart, icemaskend)
+		.sort('DATE_ACQUIRED')
+	  .filterMetadata('SUN_ELEVATION', 'greater_than', sunElev)
+	  .filter(ee.Filter.lt('CLOUD_COVER', 5)) // Only uses cloud free images (<5% cloud)
+	  .select(L8bandsUsed)
+  .map(function(image){
+  return image.rename(['BLUE','GREEN','RED','SWIR','TIR']).updateMask(ROImask1);
+  });
+  
+  // Identify the number of images used for the each ROI tile & set as property of feature
+var NumImageColl = Collection_for_ice_mask1.size();
+var NumImages_Property = feat.set('NumImages', NumImageColl);
+
+// Close loop to return a collection that has the number of images used per tile attached as property
+return NumImages_Property
+})
+
+// Create an updated collection that removes any tile that does not have any images (gets around count error)
+var UpdatedCollection = NumImages_Collection.filterMetadata('NumImages','not_equals',0)
+print(UpdatedCollection, 'Updated Catchments')
+
+Map.addLayer(UpdatedCollection,[],'RoIs');
+
+//############################################ LOOP THROUGH CATCHMENTS #############################################
+
+// Open massive loop that loops through different catchments ('returns' at very end of script)
+var ImageColl=ee.ImageCollection(UpdatedCollection.map(function(feat){ //!! I've changed this to map over the catchments FC
+
+var filteredRoiGeometry=ee.Feature(feat).geometry();  //changed this line to get the geometry of the feature
+var ROImask = ee.Image.constant(1).clip(filteredRoiGeometry)
+
+//###############################################################################
+
+
+// Collection for IceMask
+var Collection_for_ice_mask = ee.ImageCollection(L8)
+		.filterBounds(filteredRoiGeometry)
+		.filterDate(icemaskstart, icemaskend)
+		.sort('DATE_ACQUIRED')
+    .filterMetadata('SUN_ELEVATION', 'greater_than', sunElev)
+    .filter(ee.Filter.lt('CLOUD_COVER', 5)) // Only uses cloud free images (<5% cloud)
+    .select(L8bandsUsed)
+  .map(function(image){
+  return image.rename(['BLUE','GREEN','RED','SWIR','TIR']).updateMask(ROImask);
+  });
+		
+//print('Collection for Ice Mask', Collection_for_ice_mask)
+
+// Create L8 RockMask function
+var Landsat_RockMask_Func = function(image){
+  var Diff = image.select('TIR').divide(image.select('BLUE'));
+  var BLUE = image.select('BLUE')
+  var RockSeawater = Diff.gt(650).and(BLUE.lt(0.35));
+  var RockArea = RockSeawater.eq(1);
+  var RockAreav2 = RockArea.updateMask(RockArea).rename('YearlyRockArea')
+  
+  return image.addBands(RockAreav2);//updateMask(RockMaskv2).addBands(RockAreav2).addBands(RockMaskv2);
+};
+
+// Apply RockSea function and isolate areas of rock in each image
+var L8_RockMasked_Collection = Collection_for_ice_mask.map(Landsat_RockMask_Func);
+var L8_Yearly_rock_only = L8_RockMasked_Collection.select(['YearlyRockArea']);
+//print('2018 Rock Bands', L8_rock_areas_only)
+
+// Stack rock areas, then create ice mask based on areas NOT covered by rock. Clip to ROI.
+var YearIce = L8_Yearly_rock_only.reduce(ee.Reducer.max()).mask().not();
+var YearIceMask = YearIce.updateMask(YearIce).rename('YearIceMask').updateMask(ROImask);
+//print('2018 Ice Mask', YearIceMask)
+
+//Map.addLayer(YearIceMask,RedColour, 'YearIceMask')
+
+// Close big loop for each ROI by returning the output for each tile
+return YearIceMask
+}))
+
+print(ImageColl)
+
+// Display an individual IceMask image
+var Images = ImageColl.toList(ImageColl.size());
+var ToDisplay = ee.Image(Images.get(1));
+
+//Map.addLayer(ToDisplay, RedColour, 'YearIceMask')
+
+var Mosaic = ImageColl.mosaic();
+print(Mosaic)
+
+Map.addLayer(Mosaic, RedColour, 'Mosaic')
+
+
+//#####################################################################################################
+//Export the Lakes FeatureCollection to drive as a GeoJSON
+Export.image.toAsset({   
+  image: Mosaic,
+  description:'AIS_Q4_108km_2017_2018_Icemask_60m', // AIS_Q4_108km_2017_2018_Icemask_60m
+  assetId: 'AIS_Q4_108km_2017_2018_Icemask_60m', // AIS_Q4_108km_2017_2018_Icemask_60m
+  crs: 'EPSG:3031',
+  scale: 60, //60
+  region: ee.Feature(ee.FeatureCollection(UpdatedCollection.union()).first()).geometry(),  //!! changed this line to get the combined ROI geometry
+  maxPixels: 1e13
+})
+
+// Export the image, specifying scale and region.
+//Export.image.toDrive({
+ // image: Mosaic,
+ // description: 'QueenMary_IceMask_2018',
+ // scale: 60,
+ // crs: 'EPSG:3031',
+ // maxPixels: 1e12,
+ // region: catchments_collection,
+//});

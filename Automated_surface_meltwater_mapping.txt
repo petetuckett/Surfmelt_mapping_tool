@@ -1,0 +1,601 @@
+// AUTOMATIC MELTWATER MAPPING OF ANTARCTICA
+
+// GEE script to automatically map surface meltwater over the entire Antarctic continent
+// Threshold values taken from Moussavi et al (2020)
+
+// Requirements:
+// 1) A shapefile to define the area for mapping (load as an asset into GEE). This should be split into 'region of interest'
+// tiles, which have their own 'Tile_ID' numbers. For this paper, we mapped one quater of Antarctica at a time to reduce
+// the computational load within GEE - this script was therefore run four times for the four quarters.
+
+// 2) A cloud free ice mask of the study region. Use 'Create_ice_mask' to do this.
+
+// Both inputs should be stored as assets within GEE prior to running this script. The asset pathways are defined at the start of the script.
+// This script exports a single GEOJSON file to Google Drive, containing the mapped lake outputs and associated metadata.
+// Specific pathways/filenames will need changing by the user.
+
+// Pete Tuckett 2024
+// pete.tuckett@york.ac.uk, petetuckett47@gmail.com
+
+// See this paper for details of the mapping methodology:
+// Tuckett, P. A., Ely, J. C., Sole, A. J., Lea, J. M., Livingstone, S. J., Jones, J. M., & van Wessem, J. M. (2021). 
+// Automated mapping of the seasonal evolution of surface meltwater and its links to climate on the Amery Ice Shelf, Antarctica. The Cryosphere. 1-35.
+
+// ###################################################################################################################################
+
+// Set the two input pathways (see the above insructions for inputs required)
+var assetPath='users/patuckett1/Regions/AIS_Q2_108km';
+var icemaskPath = 'users/patuckett1/IceMasks/AIS_Q2_108km_2017_2018_Icemask_60m';
+
+var catchments=ee.FeatureCollection(assetPath);
+//print(catchments)
+
+Map.centerObject(catchments, 6);
+//Map.addLayer(catchments,[],'RoIs');
+
+var featGeometries=catchments.geometry().geometries();
+var catchmentsList=catchments.toList(99999)
+
+var catchmentGeom=[]
+var listLength=featGeometries.length().subtract(1)
+
+// Maps geometry for each catchment as a property
+var catchmentGeom = ee.List.sequence(0, listLength).map(function(i){
+  // get the geometry corresponding to the number
+  var geom = ee.Geometry(featGeometries.get(ee.Number(i))) ;
+  var feat = catchmentsList.map(function(feat1){
+      return ee.Feature(feat1).set('GEOMETRY', geom);
+    });
+  return feat.get(i);
+});
+
+// Create a new feature collection containing the geometry properties
+var catchments_collection=ee.FeatureCollection(catchmentGeom);
+print(catchments_collection,'Catchments')
+
+//############################################# SPECIFY CONFIG VARIABLES ##########################################
+
+// Specifiy the Data products to by used:
+var L9 = 'LANDSAT/LC09/C02/T2_TOA'; // NEW 12/04/23
+var L8 = 'LANDSAT/LC08/C01/T2_TOA';
+var L7 = 'LANDSAT/LE07/C01/T2_TOA';
+//var S2 = 'COPERNICUS/S2'
+
+// Set configuration variables
+var startDate = '2021-07-01';
+var endDate = '2022-06-30';
+var startMonth = 1 // October (option to only run a set of months per year, e.g. summer months only)
+var endMonth = 12 // April
+var timeUnit= 'year';
+var timeStep = 1; //0.5
+var L8bandsUsed = ['B2','B3','B4','B6','B10'];
+var L7bandsUsed = ['B1','B2','B3','B5','B6_VCID_1'];
+var L8_ndwiThreshold = 0.19; // L8 NDWI Threshold (Moussavi, 2020)
+//var S2_ndwiThreshold = 0.18; // S2 NDWI Threshold (Moussavi, 2020)
+var sunElev = 20; // Minimum sun elevation angle (Moussavi, 2020)
+var cloudCover = 100; // 100 = Fully cloud, 0 = No cloud
+var outputResln = 30; //spatial resolution of output
+var testnumber = 5;
+
+// Create Colour palettes for MapDisplay
+var RedColour = {palette: ['FF0000'], max: 1};
+var BlueColour = {palette: ['0000FF'], max: 1};
+var GreenColour = {palette: ['00FF00'], max: 1};
+
+
+//############################################ INITIAL LOOP TO CHECK NUMBER OF IMAGES #############################################
+
+// Open loop that loops through different catchments ('returns' at very end of script)
+var NumImages_Collection=catchments_collection.map(function(geom){
+  
+var filteredRoiGeometry1=ee.Feature(geom).get('GEOMETRY');
+
+// Create a mask for the ROI in order to be able to use .updateMask(ROIRask) to clip images to ROI
+var ROImask1 = ee.Image.constant(1).clip(filteredRoiGeometry1)
+
+//###################################### CREATE IMAGE COLLECTION WITH ID NUMBERS ###############################################
+
+// Create a Raw image collection based on ROI and dates
+var L9_Collection1 = ee.ImageCollection(L9)
+  	.filterBounds(filteredRoiGeometry1)
+  	.filterDate(startDate, endDate)
+  	.sort('system:time_start')
+  	.filterMetadata('SUN_ELEVATION', 'greater_than', sunElev)
+  	.filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+  	.filter(ee.Filter.lt('CLOUD_COVER', cloudCover))
+  	.select(L8bandsUsed)
+  .map(function(image){
+  return image.rename(['BLUE','GREEN','RED','SWIR','TIR']).updateMask(ROImask1); 
+  });
+  
+var L8_Collection1 = ee.ImageCollection(L8)
+  	.filterBounds(filteredRoiGeometry1)
+  	.filterDate(startDate, endDate)
+  	.sort('system:time_start')
+  	.filterMetadata('SUN_ELEVATION', 'greater_than', sunElev)
+  	.filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+  	.filter(ee.Filter.lt('CLOUD_COVER', cloudCover))
+  	.select(L8bandsUsed)
+  .map(function(image){
+  return image.rename(['BLUE','GREEN','RED','SWIR','TIR']).updateMask(ROImask1); 
+  });
+		
+var L7_Collection1 = ee.ImageCollection(L7)
+		.filterBounds(filteredRoiGeometry1)
+		.filterDate(startDate, endDate)
+		.sort('system:time_start')
+		.filterMetadata('SUN_ELEVATION', 'greater_than', sunElev)
+		.filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+		.filter(ee.Filter.lt('CLOUD_COVER', cloudCover))
+		.select(L7bandsUsed)
+  .map(function(image){
+  return image.rename(['BLUE','GREEN','RED','SWIR','TIR']).updateMask(ROImask1);
+  });
+
+// Merge each satellite specific collection into one combined Image Collection
+var InitialImageColl1=L9_Collection1.merge(L8_Collection1).merge(L7_Collection1).sort('system:time_start')
+//var InitialImageColl=L7_Collection.sort('system:time_start')
+
+// Identify the number of images used for the each ROI tile & set as property of feature
+var NumImageColl = InitialImageColl1.size();
+var NumImages_Property = geom.set('NumImages', NumImageColl);
+
+// Close loop to return a collection that has the number of images used per tile attached as property
+return NumImages_Property
+})
+
+// Create an updated collection that removes any tile that does not have any images (gets around count error)
+var UpdatedCollection = NumImages_Collection.filterMetadata('NumImages','not_equals',0)
+print(UpdatedCollection)
+
+Map.addLayer(UpdatedCollection,[],'RoIs');
+
+//############################################ LOOP THROUGH CATCHMENTS #############################################
+
+// Open massive loop that loops through different catchments ('returns' at very end of script)
+var ImageColl= UpdatedCollection.map(function(geom){
+
+var filteredRoiGeometry=ee.Feature(geom).get('GEOMETRY');
+
+// Create a mask for the ROI in order to be able to use .updateMask(ROIRask) to clip images to ROI
+var ROImask = ee.Image.constant(1).clip(filteredRoiGeometry)
+
+//###################################### CREATE IMAGE COLLECTION WITH ID NUMBERS ###############################################
+
+// Create a Raw image collection based on ROI and dates
+var L9_Collection = ee.ImageCollection(L9)
+  	.filterBounds(filteredRoiGeometry)
+  	.filterDate(startDate, endDate)
+  	.sort('system:time_start')
+  	.filterMetadata('SUN_ELEVATION', 'greater_than', sunElev)
+  	.filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+  	.filter(ee.Filter.lt('CLOUD_COVER', cloudCover))
+  	.select(L8bandsUsed)
+  .map(function(image){
+  return image.rename(['BLUE','GREEN','RED','SWIR','TIR']).updateMask(ROImask); 
+  });
+
+var L8_Collection = ee.ImageCollection(L8)
+  	.filterBounds(filteredRoiGeometry)
+  	.filterDate(startDate, endDate)
+  	.sort('system:time_start')
+  	.filterMetadata('SUN_ELEVATION', 'greater_than', sunElev)
+  	.filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+  	.filter(ee.Filter.lt('CLOUD_COVER', cloudCover))
+  	.select(L8bandsUsed)
+  .map(function(image){
+  return image.rename(['BLUE','GREEN','RED','SWIR','TIR']).updateMask(ROImask); 
+  });
+		
+var L7_Collection = ee.ImageCollection(L7)
+		.filterBounds(filteredRoiGeometry)
+		.filterDate(startDate, endDate)
+		.sort('system:time_start')
+		.filterMetadata('SUN_ELEVATION', 'greater_than', sunElev)
+		.filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+		.filter(ee.Filter.lt('CLOUD_COVER', cloudCover))
+		.select(L7bandsUsed)
+  .map(function(image){
+  return image.rename(['BLUE','GREEN','RED','SWIR','TIR']).updateMask(ROImask);
+  });
+
+// Merge each satellite specific collection into one combined Image Collection
+var InitialImageColl=L9_Collection.merge(L8_Collection).merge(L7_Collection).sort('system:time_start')
+//var InitialImageColl=L7_Collection.sort('system:time_start')
+
+// Convert Image Collection to a list
+var listOfImages = InitialImageColl.toList(InitialImageColl.size());
+var ListLength = listOfImages.size();
+// Create unique numbers for each image 
+var IDNumbers = ee.List.sequence(1,ListLength,1)
+// Combine the Image data with 'IDNumbers'
+var CombineLists = listOfImages.zip(IDNumbers)
+
+// Function to attach an IDNumber to each image as a property (one in Number version, one in String version)
+var ImageCollection = ee.ImageCollection(CombineLists.map(function(el){
+  var Number = ee.Number(ee.List(el).get(1));
+  var String = ee.String(Number);
+  var ImageEl = ee.List(el).get(0);
+  
+  return ee.Image(ImageEl).set('ImageIDNum', Number, 'ImageIDString', String)
+}));
+
+//print('ImageCollection', ImageCollection)
+
+//########################################### LANDSAT MASKING ############################################
+
+// Create Landsat Rock/SeaWater Mask function
+var Landsat_Masked_Collection = ImageCollection.map(function(image){
+  var Diff = image.select('TIR').divide(image.select('BLUE'));
+  var BLUE = image.select('BLUE')
+  var RockSeawater = Diff.gt(650).and(BLUE.lt(0.35));
+  var RockSeaMask = RockSeawater.neq(1);//.and(RockSeawater2.eq(1));
+  var RockSeaMaskv2 = RockSeaMask.updateMask(RockSeaMask).rename('RockSeaMask')
+  var RockSeaArea = RockSeawater.eq(1);//.and(RockSeawater2.eq(1));
+  var RockSeaAreav2 = RockSeaArea.updateMask(RockSeaArea).rename('RockSeaArea')
+  
+  var SWIR = image.select('SWIR');
+  var NDSI = image.normalizedDifference(['GREEN', 'SWIR']);
+  var Cloud = NDSI.lt(0.8).and(SWIR.gt(0.1));
+  var CloudMask = Cloud.neq(1)
+  var CloudMaskv2 = CloudMask.updateMask(CloudMask).rename('VisibleAreas')
+  var CloudArea = Cloud.eq(1)
+  var CloudAreav2 = CloudArea.updateMask(CloudArea).rename('CloudArea')
+  
+  // Masks out rock from all bands, and adds a new band that displays rock area
+  return image.updateMask(RockSeaMaskv2).updateMask(CloudMaskv2).addBands(RockSeaAreav2).addBands(CloudMaskv2).addBands(CloudAreav2);
+});
+
+
+// Create an NDWI layer and add as band to image, along with system:time_start
+var Landsat_NDWI_Collection = Landsat_Masked_Collection.map(function(image){
+  var BLUE = image.select('BLUE');
+  var GREEN = image.select('GREEN');
+  var RED = image.select('RED');
+  var NDWI = image.normalizedDifference(['BLUE', 'RED']).rename('NDWI');
+  var Lakes = NDWI.gt(L8_ndwiThreshold).and((GREEN.subtract(RED)).gt(0.10)).and((BLUE.subtract(GREEN)).gt(0.11)); // 0.10, 0.11
+  var LakeMask = Lakes.updateMask(Lakes).rename('LakeMaskOldMethod')
+  
+  return image.addBands(NDWI).addBands(LakeMask).addBands(image.metadata('ImageIDNum').rename('Image_ID'));
+});
+
+//print('Landsat_NDWI_Collection', Landsat_NDWI_Collection)
+
+
+// ######################################## IMPORT ICE MASK ##########################################
+
+// Load the exported image.
+var YearIceMask = ee.Image(icemaskPath).updateMask(ROImask);
+
+// Function to add Yearly RockMask Band to every to time window (keep as seperate function as used again later)
+var Add_IceMask_Func = function(image){
+  var IceMask = YearIceMask.select('YearIceMask');
+  return image.addBands(IceMask)
+};
+
+// Apply above function to add the yearly IceMask as a band to each Window
+var Images_with_IceMask = Landsat_NDWI_Collection.map(Add_IceMask_Func);
+
+// Create a new band that identifies Cloud over ice only (i.e. doesn't include cloud over Rock)
+var FinalMasksColl = Images_with_IceMask.map(function(image){
+  var VisibleAreasMax = image.select('VisibleAreas');
+  var YearIceMask = image.select('YearIceMask');
+  var VisibleoverIce = VisibleAreasMax.eq(YearIceMask);
+  var VisibleoverIcev2 = VisibleoverIce.updateMask(VisibleoverIce).rename('VisibleoverIce');
+  // Create a new band that fills the whole ROI, in order to calculate area of ROI that is covered by each image
+  var ROI_Area = ROImask.rename('ROI_Area')
+  
+ return image.addBands(VisibleoverIcev2).addBands(ROI_Area)
+});
+
+//print('Final Masks Collection', FinalMasksColl)
+
+
+//####################################### VISIBILITY AREA CALCULATIONS ###########################################
+
+// Functions to calculate pixel area of masked regions (Clouds and Lakes)
+var areacalc = ee.Image.pixelArea().reproject({crs:'EPSG:3031',scale:30}).divide(1000000); // add reproject and round and int16 ... see notes
+//var areacalc = ee.Image.pixelArea().divide(1000000);
+//var Areacalcv2 = areacalc.round().int16().divide(1000000);
+//var areacalc = ee.Image.constant(900).divide(1000000);
+
+//Map.addLayer(Areacalcv2)
+
+var MaskAreaFunc = function(image){
+  var Area = image.multiply(areacalc);//.select([1],['CloudMask_max']);
+  return Area.copyProperties(image, image.propertyNames())
+};
+
+var MasksCollforArea = FinalMasksColl.map(MaskAreaFunc)
+//print('Masks Collection for Area', MasksCollforArea)
+
+// Change to this once working fine, means areas are only calculated for bands that are neccessary
+//var Area_bands_only = MasksCollforArea.select('YearIceMask','VisibleAreas');
+//print('Area_bands_only', Area_bands_only)
+
+var CalculateArea = function(image){
+  var area_image = image.reduceRegion({
+    reducer: ee.Reducer.sum().unweighted(),
+    geometry: filteredRoiGeometry,
+    crs: 'EPSG:3031',
+    scale: 30,
+    maxPixels: 1e10 // Change to 1e12 if errors occuring
+  })
+  return ee.Image(image.setMulti(area_image))
+}
+
+var MaskAreas = MasksCollforArea.map(CalculateArea)
+//print('Areas of Lake/Cloud',MaskAreas)
+
+// Function to calculate a PercentVisible score for each image, adds as a property to each image
+var GetCloudPerc = function(feature){
+  var Ice = ee.Number(feature.get('YearIceMask'));
+  var VisoverIce = ee.Number(feature.get('VisibleoverIce'));
+  var PercentVisible = VisoverIce.divide(Ice).multiply(100);
+  
+  return feature.set({'PercentVisible': PercentVisible})
+};
+
+var MaskAreasv2 = MaskAreas.map(GetCloudPerc)
+//print('Areas of Lake/Cloud', MaskAreasv2)
+
+
+/// ################################ GET VISIBILITY SCORES FOR EACH WINDOW ##################################
+
+// Create time windows 
+var movingDate=ee.Date(startDate); // 'movingDate' because GEE doesn't run in order when looping through whole script
+var endingDate=ee.Date(endDate);
+
+var n_months = endingDate.difference(movingDate,timeUnit).round(); // Calculate number of months in study period
+var dates = ee.List.sequence(0,n_months,timeStep);
+var make_datelist = function(n) {
+  return movingDate.advance(n,timeUnit);
+};
+
+var dateList1 = dates.map(make_datelist); // Create a list of the start dates of each time 'window'
+//print(dateList1)
+
+// Function that creates dictionaries per time window, displaying % Vis for each image
+var PercVisData = dateList1.map(function(date){
+  var FiltDates = MaskAreasv2.filterDate(date,ee.Date(date).advance(timeStep,timeUnit))
+  var Visvalues = FiltDates.aggregate_array('PercentVisible');
+  var IDKeys = FiltDates.aggregate_array('ImageIDString');
+  var NewDictionary = ee.Dictionary.fromLists(IDKeys,Visvalues);
+  var L8IDs = FiltDates.aggregate_array('LANDSAT_PRODUCT_ID');
+  var ProductIDDic = ee.Dictionary.fromLists(IDKeys,L8IDs);
+
+  return ee.Feature(null, {'PercVis': NewDictionary, 'Landsat_Product_IDs': ProductIDDic})
+  .set('dateStart',ee.Date(date).format('YYYY-MM-dd'),
+  //'dateEnd',ee.Date(date).advance(timeStep,timeUnit).format('YYYY-MM-dd'),
+  'numImages',MaskAreasv2.filterDate(date,ee.Date(date).advance(timeStep,timeUnit)).size())
+  //'windowDays',ee.Date(date).advance(timeStep,timeUnit).difference(ee.Date(date),'day').round())
+  });
+  
+//print('PercVisData', PercVisData)
+
+// Cast as a FeatureCollection and filter so that features are only kept if a window includes at least one image
+var VisibilityFeatures = ee.FeatureCollection(PercVisData).filter(ee.Filter.gt('numImages',0));
+//print('VisibilityFeatures', VisibilityFeatures)
+
+
+// ################################ ASSIGN IMAGES TO TIME WINDOWS ################################
+
+// Assign images to a time window, reduce collections by promoting high NDWI pixels to create a composite
+var FiltColl = dateList1.map(function(date){
+  return FinalMasksColl.filterDate(date,ee.Date(date).advance(timeStep,timeUnit))
+  .qualityMosaic('NDWI') // Mosiac images together at this point so left with single images
+  .set('dateStart',ee.Date(date).format('YYYY-MM-dd'),
+  'dateEnd',ee.Date(date).advance(timeStep,timeUnit).format('YYYY-MM-dd'),
+  'numImages',FinalMasksColl.filterDate(date,ee.Date(date).advance(timeStep,timeUnit)).size(),
+  'windowDays',ee.Date(date).advance(timeStep,timeUnit).difference(ee.Date(date),'day').round())
+  //'system:time_start',ee.Date(date).millis());
+});
+
+
+// Now need assign images to the list, returns Image collection of composite NDWI images
+var FiltCollv2=ee.ImageCollection(FiltColl).filter(ee.Filter.gt('numImages',0)).map(function(image){
+  return image//.updateMask(image)//.toUint8() //set('arImSqKm',image.updateMask(image).int8())
+});
+
+//print('Composites_Collection', FiltCollv2)
+ 
+
+// ################################### IDENTIFY LAKES & VECTORISE #################################
+
+// Identify lakes within composite image (function for each time window)
+var LakesColl = FiltCollv2.map(function(image){
+  var BLUE = image.select('BLUE');
+  var GREEN = image.select('GREEN');
+  var RED = image.select('RED');
+  var NDWI = image.select('NDWI');
+  var Lakes = NDWI.gt(L8_ndwiThreshold).and((GREEN.subtract(RED)).gt(0.10)).and((BLUE.subtract(GREEN)).gt(0.11)); // 0.10, 0.11
+  var LakeMask = Lakes.updateMask(Lakes).rename('LakeMask')
+  
+return image.updateMask(LakeMask).addBands(LakeMask); //.updateMask(LakeMask) crops all bands to lake extent
+});
+  
+//print('LakesColl', LakesColl) // Lakes Coll is cut so it only includes areas of lakes
+  
+// Create function to vectorise the image collection, returns a feature collection
+var LakesVec = LakesColl.select('LakeMask').map(function(image) {
+  var LakeVectors = image//.set('AreaInSqKm',image.updateMask(image).int8()
+                    .reduceToVectors({
+                    geometry: filteredRoiGeometry,
+                    crs: 'EPSG:3031', //image.projection(),
+                    scale: outputResln, // 30 m for Landsat 
+                    geometryType: 'polygon',
+                    tileScale: 16, // Reduces aggregation tile size, higher number reduces risk of memory error
+                    maxPixels:1e10,
+                    //eightConnected: true, // If true, diagonally-connected pixels are considered adjacent
+}).geometry();//.area(outputResln).divide(1000000));
+
+return ee.Feature(LakeVectors, {
+  //'image_id': image.id(),
+  //'dateAcquired':image.get('DATE_ACQUIRED'),
+  //'dateStartYYYY-MM-dd':image.date().format('YYYY-MM-dd'),
+  'dateStart':image.get('dateStart'),
+  'catchment': geom.get('Tile_ID'),
+  //'dateEnd':image.get('dateEnd'),
+  //'numImages':image.get('numImages'),
+  //'arImSqKm':image.get('arImSqKm'),
+  //'windowDays':image.get('windowDays'),
+})
+});
+
+//print('LakesVec', LakesVec)
+
+
+//################################ CREATE HISTOGRAM COUNTS OF LAKE PIXELS PER IMAGE ###########################
+
+// Isolate Image_ID band ready for histogram function - Good to isolate the band before the map function..?
+var Image_ID_Band = LakesColl.select('Image_ID');
+//print('Image_ID_Band', Image_ID_Band)
+
+// Run the function to identify the number of lake pixels used in the composite from each image within time window
+var Histograms = Image_ID_Band.map(function(image){
+  var Hists = image
+        .reduceRegion({
+          reducer: ee.Reducer.frequencyHistogram(), // Check whether it needs to be unweighted...?
+          geometry: filteredRoiGeometry,
+          scale: 30, 
+          crs:'EPSG: 3031', 
+          maxPixels: 1e10
+        });
+
+  return ee.Feature(null, Hists)
+  //.set('numImages',image.get('numImages'),
+  //'dateEnd', image.get('dateEnd'),
+  .set('dateStart', image.get('dateStart'))
+  //'name', ROI.get('tile')) - Ideally get some way of inputting the tile name here, perhaps using geom.get('tile')
+});
+
+//print('Histograms', Histograms)
+
+// Calculate raw counts as a percentage of the sum
+var ImageIDWeightings = Histograms.map(function(feature){
+  var Raw_vals = ee.Dictionary(feature.get('Image_ID')).values();
+  var Sum = Raw_vals.reduce(ee.Reducer.sum());
+  var Raw_keys = ee.Dictionary(feature.get('Image_ID')).keys();
+  var id_num = feature.id()
+  var Percvalues = Raw_vals.map(function(number) {
+    return ee.Number(number).divide(Sum).multiply(100)})
+  var Output = ee.Dictionary.fromLists(Raw_keys,Percvalues);
+  
+  return ee.Feature(feature).set('Perc_values', Output, 'Sum_lakes', Sum, 'id_num', id_num)
+});
+
+//print('ImageIDWeightings', ImageIDWeightings)
+
+//######################################### GET OLD VISIBILITY SCORES ############################################
+
+// Isolate VisibleAreas band ready for stacking of image bands within time windows
+var VisibleoverIce_Bands = FinalMasksColl.select('VisibleoverIce');
+//print('VisibleAreas_Bands', VisibleAreas_Bands)
+
+// Run a function that stacks the masked images and assigns each stack to a moving window, writes as a list
+var StackedColl = dateList1.map(function(date){
+  return VisibleoverIce_Bands.filterDate(date,ee.Date(date).advance(timeStep,timeUnit))
+  .reduce({reducer:ee.Reducer.max(),
+  parallelScale:16,
+  })//.rename('LakeBand')
+  .set('dateStart',ee.Date(date).format('YYYY-MM-dd'),
+  'dateEnd',ee.Date(date).advance(timeStep,timeUnit).format('YYYY-MM-dd'),
+  //'cloudiness',ee.Image.get('CLOUD_COVER'),
+  'numImages',VisibleoverIce_Bands.filterDate(date,ee.Date(date).advance(timeStep,timeUnit)).size(),
+  //'windowMonths',timeStep,
+  'windowDays',ee.Date(date).advance(timeStep,timeUnit).difference(ee.Date(date),'day').round())
+  //'system:time_start',ee.Date(date).millis());//.add(timeStep.divide(2).int()));
+});
+
+// Now need assign images to the list, returns image collection converted to 8 bit images
+var StackedCollv2=ee.ImageCollection(StackedColl).filter(ee.Filter.gt('numImages',0)).map(function(image){
+  return image//.updateMask(image)//.int8() //set('arImSqKm',image.updateMask(image).int8())
+});
+
+//print('Stacked_Masks_Collection', StackedCollv2)
+
+// Apply IceMask function to add the yearly IceMask as a band to each Window
+var Stacked_Windows_with_IceMask = StackedCollv2.map(Add_IceMask_Func);
+//print('Stacked_Windows_with_IceMask', Stacked_Windows_with_IceMask)
+
+// Get Areas for calculations
+var StackedCollforArea = Stacked_Windows_with_IceMask.map(MaskAreaFunc)
+//print('Stacked Collection for Area', StackedCollforArea)
+
+var StackedAreaCalc = function(image){
+  var area_image = image.reduceRegion({
+    reducer: ee.Reducer.sum().unweighted(),
+    geometry: filteredRoiGeometry,
+    crs: 'EPSG:3031',
+    scale: 30,
+    maxPixels: 1e10
+});
+
+return ee.Feature(null, area_image).copyProperties(image, image.propertyNames())
+};
+
+var StackedMaskAreas = StackedCollforArea.map(StackedAreaCalc)
+//print('Areas from Stacked Method',StackedMaskAreas)
+
+// Function to calculate a PercentVisible score for each image, adds as a property to each image
+var GetCloudPercv2 = function(feature){
+  var Ice = ee.Number(feature.get('YearIceMask'));
+  var VisoverIce = ee.Number(feature.get('VisibleoverIce_max'));
+  var PercentVisible = VisoverIce.divide(Ice).multiply(100);
+  
+  return feature.set({'PercentVisible': PercentVisible})
+};
+
+// Run Percent Visible function to get measure as a property
+var StackedMaskAreasv2 = StackedMaskAreas.map(GetCloudPercv2);
+//print('Stacked Areas of Lakes', StackedMaskAreasv2)
+
+// ############################### JOIN LAKE VECTORS TO BOTH VISIBILITY STATISTICS ###########################
+
+// Create the join.
+var simpleJoin = ee.Join.inner();
+
+// Join Lake Vectors with Area Collection (copies properties to Lake vectors)
+var dateStartfilter = ee.Filter.equals({
+  leftField: 'dateStart',
+  rightField: 'dateStart'
+});
+
+var JoinVectors = ee.FeatureCollection(simpleJoin.apply(LakesVec, ImageIDWeightings, dateStartfilter))
+
+var Output = JoinVectors.map(function(feature){
+  return ee.Feature(feature.get('primary')).copyProperties(feature.get('secondary'));
+})
+//print('Output', Output)
+
+// Now join this output to the Visibility score feature collection
+var JoinPercVis = ee.FeatureCollection(simpleJoin.apply(Output, VisibilityFeatures, dateStartfilter))
+
+var OutputNewVis = JoinPercVis.map(function(feature){
+  return ee.Feature(feature.get('primary')).copyProperties(feature.get('secondary'));
+})
+//print('OutputNewVis', OutputNewVis)
+
+// Finally join this with the visibility scores from the old method
+var JoinOldVis = ee.FeatureCollection(simpleJoin.apply(OutputNewVis, StackedMaskAreasv2, dateStartfilter))
+
+var FinalOutput = JoinOldVis.map(function(feature){
+  return ee.Feature(feature.get('primary')).copyProperties(feature.get('secondary'));
+})
+//print('FinalOutput', FinalOutput)
+
+// Close big loop for each ROI by returning the output for each tile
+return FinalOutput
+})
+
+//######################################### EXPORT FILES ############################################
+
+//print(ImageColl,'ImageColl')
+
+//Export the Lakes FeatureCollection to drive as a GeoJSON
+Export.table.toDrive({
+  collection: ImageColl.flatten(),
+  description:'LST_AIS_Q2_108km_2021_2022_MaxExtent',
+  folder:"Continent_wide_GEOJSONs", // If wanting to save GeoJson directly into this folder
+  fileFormat: 'GEOJSON'
+});

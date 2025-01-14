@@ -1,4 +1,4 @@
-# Surfmelt_mapping_tools
+# Surfmelt_mapping_tool
 Google Earth Engine and Matlab codes to automatically map surface meltwater across the entire Antarctic Ice Sheet.
 
 This code relates to the following paper preprint, which describes the continent-wide dataset and methodology:

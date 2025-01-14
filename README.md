@@ -27,20 +27,20 @@ within GEE are constantly updated, and minor adaptions to scripts lines relating
 
 CODE DESCRIPTIONS & INSTRUCTIONS:
 
-Three key scripts are required to run our Continent-wide mapping methodology. A shapefile specfying the area to be mapped over is also required. Our continent-wide
-dataset was created by mapping over one quarter of Antarctica at a time, to avoid memory limits within GEE. See below a description of the steps taken to map surface meltwater
-over any given pre-defined area of Antarctica. Meltwater is mapped over a user-specified time period and temporal resolution.
+Three key scripts are required to run the surface meltwater mapping methodology. A shapefile specfying the area to be mapped over is also required - An example input shapefile is provided to 
+demonstrate the method for the Amery region of Antarctica. Our continent-wide dataset was created by mapping over one quarter of Antarctica at a time, to avoid memory limits within GEE. 
+See below a description of the steps taken to map surface meltwater over any given pre-defined area of Antarctica.  Meltwater is mapped over a user-specified time period and temporal resolution.
 
-1) Generate a shapefile polygon to define the area you intend to map over. If the area is larger than 100 x 100 km2, split the polygon into multiple tiles. See Amery.shp as an example for mapping
-over the Amery region of Antarctica (Tuckett et al., 2021). Ensure that each tile has a unique Tile_ID number.
-2) Import this shapefile into GEE as an asset.
-3) Generate an ice mask for your given study area (and selected time period) by running the GEE script: 'Create_ice_mask'. Ensure that the assetpath is set to match the location of the shapefile asset
-imported in step 2. This script will create an ice mask and save it as a new asset within GEE.
-4) Run the lake mapping script: 'Automated_surface_meltwater_mapping'. Ensure that 'icemaskPath' is set to match the location of the ice mask within assets. Specify the date range
+1) Generate a shapefile polygon to define the area you intend to map over. If the area is larger than 100 x 100 km2, split the polygon into multiple tiles. See Amery.shp (Example_shapefile) as an
+example for mapping over the Amery region of Antarctica (Tuckett et al., 2021). Ensure that each tile has a unique Tile_ID number.
+3) Import this shapefile into GEE as an asset.
+4) Generate an ice mask for your given study area (and selected time period) by running the GEE script: 'Create_ice_mask'. Ensure that the assetpath is set to match the location of the shapefile asset
+imported in step 2. This script will create an ice mask and save it as a new asset within GEE. Time taken for Amery example: 10 minutes.
+5) Run the lake mapping script: 'Automated_surface_meltwater_mapping'. Ensure that 'icemaskPath' is set to match the location of the ice mask within assets. Specify the date range
 and temporal resolution (time window length) under 'SPECIFY CONFIG VARIABLES'. This script maps surface water for the given region and date range, and attaches visibility metadata.
 It exports a GEOJSON file to Google Drive - set the output location and file names at the end of the script.
-5) Download the GEOJSON file from Google Drive, and save it with your documents.
-6) Generate mapped lake shapefiles for each time window by running the Matlab script: 'Post_processing_script_Matlab.m'. The script requires some functions that may need to be downloaded 
+6) Download the GEOJSON file from Google Drive, and save it with your documents.
+7) Generate mapped lake shapefiles for each time window by running the Matlab script: 'Post_processing_script_Matlab.m'. The script requires some functions that may need to be downloaded 
 from Mathworks. File pathways/directory structure will need editing by the user. The script is setup to create three versions of shapefile outputs:
 (i) Individual_tiles (raw shapefiles for each individual tile, per time window)
 (ii) Combined (Merges tiles, to create a single shapefile per time window)

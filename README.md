@@ -31,9 +31,9 @@ Three key scripts are required to run our Continent-wide mapping methodology. A 
 dataset was created by mapping over one quarter of Antarctica at a time, to avoid memory limits within GEE. See below a description of the steps taken to map surface meltwater
 over any given pre-defined area of Antarctica. Meltwater is mapped over a user-specified time period and temporal resolution.
 
-1) Generate a shapefile polygon to define the area you intend to map over. If the area is larger than 100 x 100 km2, split the polygon into multiple tiles. See Figure 1 in
-Tuckett et al. (2021) for an example. Ensure that each tile has a unique Tile_ID number.
-2) Import this shapefile polygon into GEE as an asset.
+1) Generate a shapefile polygon to define the area you intend to map over. If the area is larger than 100 x 100 km2, split the polygon into multiple tiles. See Amery.shp as an example for mapping
+over the Amery region of Antarctica (Tuckett et al., 2021). Ensure that each tile has a unique Tile_ID number.
+2) Import this shapefile into GEE as an asset.
 3) Generate an ice mask for your given study area (and selected time period) by running the GEE script: 'Create_ice_mask'. Ensure that the assetpath is set to match the location of the shapefile asset
 imported in step 2. This script will create an ice mask and save it as a new asset within GEE.
 4) Run the lake mapping script: 'Automated_surface_meltwater_mapping'. Ensure that 'icemaskPath' is set to match the location of the ice mask within assets. Specify the date range

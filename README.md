@@ -17,21 +17,21 @@ Please contact Pete Tuckett (University of York) for more information - pete.tuc
 
 SOFTWARE REQUIREMENTS:
 
-1) Google Earth Engine (requires a user account) - copy the contents of each .txt file into a new GEE script (https://code.earthengine.google.com).
-2) Matlab (Used for post-processing stages. Code could be adapted for use in other platforms)
-3) Use of a High Performace Computing (HPC) platform is beneficial, but not essential, for the post-processing Matlab script
+1) Google Earth Engine (requires a user account) - copy the contents of each .txt file into a new GEE script (https://code.earthengine.google.com). Scripts tested and fully working on GEE, Jan 2025.
+2) Matlab (Used for post-processing stages. Code could be adapted for use in other platforms). Scripts tested and fully working on Matlab R2023a, Jan 2025.
+3) Use of a High Performace Computing (HPC) platform is beneficial, but not essential, for the post-processing Matlab script.
 
-Our continent-wide dataset was produced in 2022. All scripts have been updated to reflect system changes within GEE, but please be aware that the image collections
-within GEE are constantly updated, and minor adaptions to scripts lines relating to image file pathways and image band names may be required.
+Our continent-wide dataset was produced in 2022. All scripts have been updated to reflect system changes within GEE (as of Jan 2025), but please be aware that the image collections
+within GEE are constantly updated, and minor adaptions to scripts lines relating to image file pathways and image band names may be required in the future.
 
 
 CODE DESCRIPTIONS & INSTRUCTIONS:
 
-Three key scripts are required to run the surface meltwater mapping methodology. A shapefile specfying the area to be mapped over is also required - An example input shapefile is provided to 
-demonstrate the method for the Amery region of Antarctica. Our continent-wide dataset was created by mapping over one quarter of Antarctica at a time, to avoid memory limits within GEE. 
+Three key scripts are required to run the surface meltwater mapping methodology. A shapefile specfying the area to be mapped over is also required - An example input shapefile is provided 
+(/Example_shapefile/Amery.shp) to demonstrate the method for the Amery region of Antarctica. Our continent-wide dataset was created by mapping over one quarter of Antarctica at a time, to avoid memory limits within GEE. 
 See below a description of the steps taken to map surface meltwater over any given pre-defined area of Antarctica.  Meltwater is mapped over a user-specified time period and temporal resolution.
 
-1) Generate a shapefile polygon to define the area you intend to map over. If the area is larger than 100 x 100 km2, split the polygon into multiple tiles. See Amery.shp (Example_shapefile) as an
+1) Generate a shapefile polygon to define the area you intend to map over. If the area is larger than 100 x 100 km2, split the polygon into multiple tiles. See Amery.shp as an
 example for mapping over the Amery region of Antarctica (Tuckett et al., 2021). Ensure that each tile has a unique Tile_ID number.
 3) Import this shapefile into GEE as an asset.
 4) Generate an ice mask for your given study area (and selected time period) by running the GEE script: 'Create_ice_mask'. Ensure that the assetpath is set to match the location of the shapefile asset

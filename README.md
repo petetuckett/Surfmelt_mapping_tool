@@ -3,7 +3,7 @@ Google Earth Engine and Matlab codes to automatically map surface meltwater acro
 
 This code relates to the following paper preprint, which describes the continent-wide dataset and methodology:
 
-Tuckett, P., Ely, J., Sole, A., Livingstone, S., Jones, J., Lea, J., & Gilbert, E. (in review). 
+Tuckett, P., Sole, A., Livingstone, S., Jones, J., Lea, J., & Gilbert, E. (in review). 
 Continent-scale mapping reveals increasing sensitivity of East Antarctica to meltwater ponding.
 
 The continent-wide dataset described here was produced using a scaled up version of the method descibed in Tuckett et al., 2021.
@@ -38,7 +38,7 @@ example for mapping over the Amery region of Antarctica (Tuckett et al., 2021). 
 imported in step 2. This script will create an ice mask and save it as a new asset within GEE. Time taken for Amery example: 10 minutes.
 5) Run the lake mapping script: 'Automated_surface_meltwater_mapping'. Ensure that 'icemaskPath' is set to match the location of the ice mask within assets. Specify the date range
 and temporal resolution (time window length) under 'SPECIFY CONFIG VARIABLES'. This script maps surface water for the given region and date range, and attaches visibility metadata.
-It exports a GEOJSON file to Google Drive - set the output location and file names at the end of the script.
+It exports a GEOJSON file to Google Drive - set the output location and file names at the end of the script. Time taken for Amery example, mapping over one month: 50 minutes.
 6) Download the GEOJSON file from Google Drive, and save it with your documents.
 7) Generate mapped lake shapefiles for each time window by running the Matlab script: 'Post_processing_script_Matlab.m'. The script requires some functions that may need to be downloaded 
 from Mathworks. File pathways/directory structure will need editing by the user. The script is setup to create three versions of shapefile outputs:

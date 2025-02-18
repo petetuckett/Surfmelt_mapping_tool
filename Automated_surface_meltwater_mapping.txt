@@ -24,8 +24,8 @@
 // ###################################################################################################################################
 
 // Set the two input pathways (see the above insructions for inputs required)
-var assetPath='users/patuckett1/Regions/AIS_Q2_108km';
-var icemaskPath = 'users/patuckett1/IceMasks/AIS_Q2_108km_2017_2018_Icemask_60m';
+var assetPath='projects/pete-cloud-1/assets/Ant_Surfmelt_mapping/Amery';
+var icemaskPath = 'projects/pete-cloud-1/assets/Ant_Surfmelt_mapping/Amery_2017_2018_Icemask_60m';
 
 var catchments=ee.FeatureCollection(assetPath);
 //print(catchments)

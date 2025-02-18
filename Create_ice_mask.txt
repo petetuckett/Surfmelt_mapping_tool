@@ -14,9 +14,7 @@
 
 // #################################### CREATE ICE MASK AND ADD TO WINDOW COLLECTION ####################################
 
-var assetPath='users/patuckett1/Regions/AIS_Q4_108km';
-//var assetPath='users/petetuckett/Antarctic_lakes/Flask_2_tiles';
-//var assetPath='users/Jmleaglacio/AIS_Q4_new';
+var assetPath='projects/pete-cloud-1/assets/Ant_Surfmelt_mapping/Amery';
 
 var catchments=ee.FeatureCollection(assetPath);
 print(catchments)
